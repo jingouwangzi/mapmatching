@@ -1,3 +1,4 @@
+# -*- coding: UTF-8 -*-
 """
 -------------------------------------------------------------------------------
 # Name:        mapMatcher
@@ -37,7 +38,7 @@ try:
     from math import exp, sqrt
     import os
     import arcpy
-    arcpy.env.overwriteOutput = True
+    arcpy.env.overwriteOutput = True #管理工具在运行时是否自动覆盖任何现有输出。设置为 True 时，工具将执行并覆盖输出数据集。
     import networkx as nx
     import time
 
@@ -48,6 +49,8 @@ except ImportError:
 
 
 def mapMatch(track, segments, decayconstantNet = 30, decayConstantEu = 10, maxDist = 50, addfullpath = True):
+    #6个参数，第一个是点，第二个是路径，后面四个是可选参数，具体看下面解释：
+    #这里用的是隐马尔科夫模型，维特比算法
     """
     The main method. Based on the Viterbi algorithm for Hidden Markov models,
     see https://en.wikipedia.org/wiki/Viterbi_algorithm.
@@ -65,6 +68,7 @@ def mapMatch(track, segments, decayconstantNet = 30, decayConstantEu = 10, maxDi
     note: depending on the type of movement, optional parameters need to be fine tuned to get optimal results.
     """
     #Make sure passed in parameters are floats
+    #强制转换后面三个参数为浮点型
     decayconstantNet = float(decayconstantNet)
     decayConstantEu = float(decayConstantEu)
     maxDist= float(maxDist)
@@ -73,10 +77,13 @@ def mapMatch(track, segments, decayconstantNet = 30, decayConstantEu = 10, maxDi
     start_time = time.time()
 
     #this array stores, for each point in a track, probability distributions over segments, together with the (most probable) predecessor segment taking into account a network distance
+    #这段话太长没完全理解
     V = [{}]
 
     #get track points, build network graph (graph, endpoints, lengths) and get segment info from arcpy
+    #获取轨迹点，创建网络图形，从arcpy获取路段信息
     points = getTrackPoints(track, segments)
+    #参数是传入的轨迹点和道路线，但是看这个函数的代码，没有使用到segments，因为这一句被注释掉了
     r = getSegmentInfo(segments)
     endpoints = r[0]
     lengths = r[1]
@@ -439,6 +446,7 @@ def getTrackPoints(track, segments):
     trackpoints = []
     if arcpy.Exists(track):
         for row in arcpy.da.SearchCursor(track, ["SHAPE@"]):
+            #在 ArcGIS 10.1 中引入了 arcpy.da 游标（arcpy.da.SearchCursor、arcpy.da.UpdateCursor 和 arcpy.da.InsertCursor），与先前已存在的游标功能（arcpy.SearchCursor、arcpy.UpdateCursor 和 arcpy.InsertCursor）组相比性能要快得多。仍然会提供原始游标，不过仅仅是为了能够继续向后兼容
             #make sure track points are reprojected to network reference system (should be planar)
             geom = row[0]
             #geom = row[0].projectAs(arcpy.Describe(segments).spatialReference)
