@@ -93,3 +93,7 @@ To use the Python method as an ArcGIS toolbox, you need to do the following:
 <img src="https://github.com/simonscheider/mapmatching/blob/master/mapMatch.PNG" width="500" />
 
 The tool saves a new shape file named _NameofInputTrack_pth.shp_ inside the current ArcGIS workspace that contains the path of segments to which the track was mapped. When executing, make sure the network is as small as possible to speed up.
+
+
+## jingouwangzip评论
+经测试（win 1803+arcgis 10.5），用原作者提供的样例运行程序后啥都没得到，所以准备自己研究一下arcpy和原程序，理解后自己修改完成。
