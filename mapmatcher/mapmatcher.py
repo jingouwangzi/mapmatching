@@ -84,9 +84,9 @@ def mapMatch(track, segments, decayconstantNet = 30, decayConstantEu = 10, maxDi
     #获取轨迹点，创建网络图形，从arcpy获取路段信息
     points = getTrackPoints(track, segments)
     #参数是传入的轨迹点和道路线，但是看这个函数的代码，没有使用到segments，因为这一句被注释掉了
-    r = getSegmentInfo(segments)
-    endpoints = r[0]
-    lengths = r[1]
+    r = getSegmentInfo(segments)#r就是两个字典，路段路径和路段长度两个字典
+    endpoints = r[0] #这个就是路段路径所经过的点
+    lengths = r[1] #这个就是路段的长度
     graph = getNetworkGraph(segments,lengths)
     pathnodes = [] #set of pathnodes to prevent loops
 
@@ -446,13 +446,14 @@ def getTrackPoints(track, segments):
     trackpoints = []
     if arcpy.Exists(track):
         for row in arcpy.da.SearchCursor(track, ["SHAPE@"]):
-            #在 ArcGIS 10.1 中引入了 arcpy.da 游标（arcpy.da.SearchCursor、arcpy.da.UpdateCursor 和 arcpy.da.InsertCursor），与先前已存在的游标功能（arcpy.SearchCursor、arcpy.UpdateCursor 和 arcpy.InsertCursor）组相比性能要快得多。仍然会提供原始游标，不过仅仅是为了能够继续向后兼容
+            #SearchCursor 用于建立从要素类或表中返回的记录的只读访问权限。返回一组迭代的元组。元组中值的顺序与 field_names 参数指定的字段顺序相符。
+            #Geometry 属性可通过在字段列表中指定令牌 SHAPE@ 进行访问。
             #make sure track points are reprojected to network reference system (should be planar)
             geom = row[0]
             #geom = row[0].projectAs(arcpy.Describe(segments).spatialReference)
             trackpoints.append(row[0])
         print 'track size:' + str(len(trackpoints))
-        return trackpoints
+        return trackpoints  #返回一个由点要素对象组成的数组
     else:
         print "Track file does not exist!"
 
@@ -466,6 +467,7 @@ def getNetworkGraph(segments,segmentlengths):
     print path
     if arcpy.Exists(path):
         g = nx.read_shp(path)
+        #networkx的用法，学习理解一下
         #This selects the largest connected component of the graph
         sg = list(nx.connected_component_subgraphs(g.to_undirected()))[0]
         print "graph size (excluding unconnected parts): "+str(len(g))
@@ -494,7 +496,9 @@ def getSegmentInfo(segments):
         #prepare segment layer for fast search
         arcpy.Delete_management('segments_lyr')
         arcpy.MakeFeatureLayer_management(segments, 'segments_lyr')
-        return (endpoints,segmentlengths)
+        return (endpoints,segmentlengths)   
+        #返回两个字典，第一个字典key是路段objectid，值是一个由点坐标值组成的元祖，也就是路段经过的所有点
+        #第二个字典，key也是objectid，值就是这个路段的长度
     else:
         print "segment file does not exist!"
 
