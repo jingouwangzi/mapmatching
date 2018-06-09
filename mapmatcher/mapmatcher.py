@@ -60,10 +60,19 @@ def mapMatch(track, segments, decayconstantNet = 30, decayConstantEu = 10, maxDi
         @param segments = a shape file of network segments, should be projected (in meter) to compute Euclidean distances properly (e.g. GCS Amersfoord)
         @param decayconstantNet (optional) = the network distance (in meter) after which the match probability falls under 0.34 (exponential decay). (note this is the inverse of lambda).
         This depends on the point frequency of the track (how far are track points separated?)
+        网络衰减距离，应该是大于这个距离的匹配可能性低于0.34（指数衰减）
+        取决于轨迹点的频率（轨迹点分布距离有多远）
+
         @param decayConstantEu (optional) = the Euclidean distance (in meter) after which the match probability falls under 0.34 (exponential decay). (note this is the inverse of lambda).
         This depends on the positional error of the track points (how far can points deviate from their true position?)
+        欧氏衰减距离，应该是大于这个距离的匹配可能性低于0.34（指数衰减）
+        取决于轨迹点的位置错误（一个点与它的真实位置距离多远）
+
         @param maxDist (optional) = the Euclidean distance threshold (in meter) for taking into account segments candidates.
+        最大距离，估计是可以匹配到路段上的欧氏距离的阈值，大于这个距离就认为跟路段不匹配
+
         @param addfullpath (optional, True or False) = whether a contiguous full segment path should be outputted. If not, a 1-to-1 list of segments matching each track point is outputted.
+        是否输出完整的距离，如果选否，那么就只输出每个轨迹点对应的路段
 
     note: depending on the type of movement, optional parameters need to be fine tuned to get optimal results.
     """
@@ -87,10 +96,15 @@ def mapMatch(track, segments, decayconstantNet = 30, decayConstantEu = 10, maxDi
     r = getSegmentInfo(segments)#r就是两个字典，路段路径和路段长度两个字典
     endpoints = r[0] #这个就是路段路径所经过的点
     lengths = r[1] #这个就是路段的长度
-    graph = getNetworkGraph(segments,lengths)
+    graph = getNetworkGraph(segments,lengths)#获取输入网络的最大连通分量（networkx的无向图，并且边的属性有路段长度）
+    #以上有点不理解，看这个函数，获取的原始图有735个边，但是实际原来的shp有745个边，为什么？
+    #原始图有735个边，最大分量有681个边（看了一下原始图、导入networkx的图和最大分量，确实数量都没问题，但是这个取舍是什么原理就不知道了）
+    
     pathnodes = [] #set of pathnodes to prevent loops
+    #创建一个点序列，来防止循环
 
     #init first point
+    #初始化第一个轨迹点
     sc = getSegmentCandidates(points[0], segments, decayConstantEu, maxDist)
     for s in sc:
         V[0][s] = {"prob": sc[s], "prev": None, "path": [], "pathnodes":[]}
@@ -318,14 +332,25 @@ def getPDProbability(dist, decayconstant = 10):
     return p
 
 def getSegmentCandidates(point, segments, decayConstantEu, maxdist=50):
+    #获取候选路段
     """
     Returns closest segment candidates with a-priori probabilities.
     Based on maximal spatial distance of segments from point.
+    基于从轨迹点到路段的最大空间距离
+    以先验概率返回最接近的候选路段
+    参数有四个，一个轨迹点，所有的路段，网络衰减距离，路段匹配最大距离
     """
     p = point.firstPoint #get the coordinates of the point geometry
+    #p是一个这东西：<Point (160934.301881, 386407.104818, #, #)>，也就是arcpy.arcobjects.arcobjects.Point
+    #arcpy里面点和点几何不一样，可以从下面两行代码看出来
+    #point = arcpy.Point(25282, 43770)
+    #ptGeometry = arcpy.PointGeometry(point)
+
     #print "Neighbors of point "+str(p.X) +' '+ str(p.Y)+" : "
     #Select all segments within max distance
     arcpy.SelectLayerByLocation_management ("segments_lyr", "WITHIN_A_DISTANCE", point, maxdist)
+    #注意：如果不是用arctoolbox
+
     candidates = {}
     #Go through these, compute distances, probabilities and store them as candidates
     cursor = arcpy.da.SearchCursor('segments_lyr', ["OBJECTID", "SHAPE@"])
@@ -472,6 +497,7 @@ def getNetworkGraph(segments,segmentlengths):
         sg = list(nx.connected_component_subgraphs(g.to_undirected()))[0]
         print "graph size (excluding unconnected parts): "+str(len(g))
         # Get the length for each road segment and append it as an attribute to the edges in the graph.
+        #获取每段路的长度，添加到networkx图中边的属性
         for n0, n1 in sg.edges():
             oid = sg[n0][n1]["OBJECTID"]
             sg[n0][n1]['length'] = segmentlengths[oid]
