@@ -60,7 +60,7 @@ def mapMatch(track, segments, decayconstantNet = 30, decayConstantEu = 10, maxDi
         @param segments = a shape file of network segments, should be projected (in meter) to compute Euclidean distances properly (e.g. GCS Amersfoord)
         @param decayconstantNet (optional) = the network distance (in meter) after which the match probability falls under 0.34 (exponential decay). (note this is the inverse of lambda).
         This depends on the point frequency of the track (how far are track points separated?)
-        网络衰减距离，应该是大于这个距离的匹配可能性低于0.34（指数衰减）
+        网络衰减距离，应该是大于这个距离的匹配可能性低于0.34（指数衰减），，根据后面的代码，实际上大于这个距离，概率大于0.3679，概率计算：1/exp(dist/decayconstant)，dist就是点距离路段距离
         取决于轨迹点的频率（轨迹点分布距离有多远）
 
         @param decayConstantEu (optional) = the Euclidean distance (in meter) after which the match probability falls under 0.34 (exponential decay). (note this is the inverse of lambda).
@@ -106,9 +106,11 @@ def mapMatch(track, segments, decayconstantNet = 30, decayConstantEu = 10, maxDi
     #init first point
     #初始化第一个轨迹点
     sc = getSegmentCandidates(points[0], segments, decayConstantEu, maxDist)
+    #sc就是第一个点50米范围内每个路段的概率，一个字典，key是路段objectid，value是概率值
+
     for s in sc:
         V[0][s] = {"prob": sc[s], "prev": None, "path": [], "pathnodes":[]}
-    # Run Viterbi when t > 0
+    # Run Viterbi when t > 0   #这里开始维特比算法
     for t in range(1, len(points)):
         V.append({})
         #Store previous segment candidates
@@ -317,7 +319,7 @@ def exportPath(opt, trackname):
         arcpy.AddError(outname)
 
 
-def getPDProbability(dist, decayconstant = 10):
+def getPDProbability(dist, decayconstant = 10):  #就是返回一个概率，距离越远概率越小
     """
     The probability that given a certain distance between points and segments, the point is on the segment
     This needs to be parameterized
@@ -326,13 +328,15 @@ def getPDProbability(dist, decayconstant = 10):
     decayconstant= float(decayconstant)
     dist= float(dist)
     try:
-        p = 1 if dist == 0 else round(1/exp(dist/decayconstant),4)
+        p = 1 if dist == 0 else round(1/exp(dist/decayconstant),4)  #点落在路段上的概率，指数的概率递减
     except OverflowError:
-        p =  round(1/float('inf'),2)
+        p =  round(1/float('inf'),2)   #注意float('inf')是一个特定的常量，是指正无穷，float('-inf')指负无穷，所以这句的意思就是，如果计算结果超出最大限制就认为是无穷大
     return p
 
 def getSegmentCandidates(point, segments, decayConstantEu, maxdist=50):
-    #获取候选路段
+    #获取候选路段，并给出候选路段的概率
+    #这一步就是获取这个点在maxdist距离之内的所有路段，然后根据decayConstantEu，给每个路段赋一个概率值，也就是可能是点经过路段的概率
+    #返回一个字典，key是路段的objectid，value是路段的概率
     """
     Returns closest segment candidates with a-priori probabilities.
     Based on maximal spatial distance of segments from point.
@@ -349,16 +353,18 @@ def getSegmentCandidates(point, segments, decayConstantEu, maxdist=50):
     #print "Neighbors of point "+str(p.X) +' '+ str(p.Y)+" : "
     #Select all segments within max distance
     arcpy.SelectLayerByLocation_management ("segments_lyr", "WITHIN_A_DISTANCE", point, maxdist)
-    #注意：如果不是用arctoolbox
+    #注意：如果不是用arctoolbox,这个图层没有，所以要创建一个arcpy.MakeFeatureLayer_management(segments, "segments_lyr"),
+    #但是这句运行之后出来的是个啥也没搞清楚
+    #好像运行出来之后不会生成一个新的东西，但是对这个层操作就只会对选中的产生影响
 
     candidates = {}
     #Go through these, compute distances, probabilities and store them as candidates
     cursor = arcpy.da.SearchCursor('segments_lyr', ["OBJECTID", "SHAPE@"])
-    row =[]
+    row =[]  #这个好像也没有用到，下面的循环不用定义这个应该也是可以的
     for row in cursor:
-        feat = row[1]
+        feat = row[1]  #这个好像没有用到
         #compute the spatial distance
-        dist = point.distanceTo(row[1])
+        dist = point.distanceTo(row[1])  #这个distanceTo的用法是：如果垂线在路段上，就是垂线长度，如果不是，就是到线的最近端点的长度，总的来说就是到路段的最近点的长度
         #compute the corresponding probability
         candidates[row[0]] = getPDProbability(dist, decayConstantEu)
     del row
