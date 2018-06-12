@@ -60,12 +60,12 @@ def mapMatch(track, segments, decayconstantNet = 30, decayConstantEu = 10, maxDi
         @param segments = a shape file of network segments, should be projected (in meter) to compute Euclidean distances properly (e.g. GCS Amersfoord)
         @param decayconstantNet (optional) = the network distance (in meter) after which the match probability falls under 0.34 (exponential decay). (note this is the inverse of lambda).
         This depends on the point frequency of the track (how far are track points separated?)
-        网络衰减距离，应该是大于这个距离的匹配可能性低于0.34（指数衰减），，根据后面的代码，实际上大于这个距离，概率大于0.3679，概率计算：1/exp(dist/decayconstant)，dist就是点距离路段距离
+        网络衰减距离，应该是大于这个距离的匹配可能性低于0.34（指数衰减）
         取决于轨迹点的频率（轨迹点分布距离有多远）
 
         @param decayConstantEu (optional) = the Euclidean distance (in meter) after which the match probability falls under 0.34 (exponential decay). (note this is the inverse of lambda).
         This depends on the positional error of the track points (how far can points deviate from their true position?)
-        欧氏衰减距离，应该是大于这个距离的匹配可能性低于0.34（指数衰减）
+        欧氏衰减距离，应该是大于这个距离的匹配可能性低于0.34（指数衰减），根据后面的代码,这里是指一个路段距离某个点的距离大于这个距离，那么点在这个路段上的概率就小于0.34，防染根据我的计算实际上大于这个距离，概率小于0.3679，概率计算：1/exp(dist/decayconstant)，dist就是点距离路段距离
         取决于轨迹点的位置错误（一个点与它的真实位置距离多远）
 
         @param maxDist (optional) = the Euclidean distance threshold (in meter) for taking into account segments candidates.
@@ -88,11 +88,12 @@ def mapMatch(track, segments, decayconstantNet = 30, decayConstantEu = 10, maxDi
     #this array stores, for each point in a track, probability distributions over segments, together with the (most probable) predecessor segment taking into account a network distance
     #这段话太长没完全理解
     V = [{}]
+    #V这个列表存储的是：对每一个点，对应一个字典，每个字典的key是这个点对应一定距离之内路段（getSegmentCandidates获得的候选路段）的objectid，value是另带一个字典，包含四对key-value，分别是'path': [], 'prev': None, 'prob': 0.4463, 'pathnodes': []。其中path是？prev是？prob是？pathnodes是？
 
     #get track points, build network graph (graph, endpoints, lengths) and get segment info from arcpy
     #获取轨迹点，创建网络图形，从arcpy获取路段信息
     points = getTrackPoints(track, segments)
-    #参数是传入的轨迹点和道路线，但是看这个函数的代码，没有使用到segments，因为这一句被注释掉了
+    #参数是传入的轨迹点和道路线，但是看这个函数的代码，没有使用到segments，因为使用segments的一句被注释掉了
     r = getSegmentInfo(segments)#r就是两个字典，路段路径和路段长度两个字典
     endpoints = r[0] #这个就是路段路径所经过的点
     lengths = r[1] #这个就是路段的长度
@@ -114,15 +115,17 @@ def mapMatch(track, segments, decayconstantNet = 30, decayConstantEu = 10, maxDi
     for t in range(1, len(points)):
         V.append({})
         #Store previous segment candidates
-        lastsc = sc
+        lastsc = sc  #保存上一个点相关路段的信息，sc用作下一个点的信息保存
         #Get segment candidates and their a-priori probabilities (based on Euclidean distance for current point t)
         sc = getSegmentCandidates(points[t], segments, decayConstantEu, maxDist)
         for s in sc:
+            #s是一个point对应的某个观测状态，
             max_tr_prob = 0
             prev_ss = None
             path = []
             for prev_s in lastsc:
                 #determine the highest network transition probability from previous candidates to s and get the corresponding network path
+                #确定前一个点对应候选路段到s（这个点对应的某个路段）的最高网络转移概率，并得到相应的网络路径
                 pathnodes = V[t-1][prev_s]["pathnodes"][-10:]
                 n = getNetworkTransP(prev_s, s, graph, endpoints, lengths, pathnodes, decayconstantNet)
                 np = n[0] #This is the network transition probability
@@ -353,9 +356,12 @@ def getSegmentCandidates(point, segments, decayConstantEu, maxdist=50):
     #print "Neighbors of point "+str(p.X) +' '+ str(p.Y)+" : "
     #Select all segments within max distance
     arcpy.SelectLayerByLocation_management ("segments_lyr", "WITHIN_A_DISTANCE", point, maxdist)
-    #注意：如果不是用arctoolbox,这个图层没有，所以要创建一个arcpy.MakeFeatureLayer_management(segments, "segments_lyr"),
+    #注意：如果图层没有，要创建一个arcpy.MakeFeatureLayer_management(segments, "segments_lyr"),
+    #在getSegmentInfo函数里面已经创建了这个layer，看起来在这里还可以继续使用
     #但是这句运行之后出来的是个啥也没搞清楚
     #好像运行出来之后不会生成一个新的东西，但是对这个层操作就只会对选中的产生影响
+
+    #注意以上三行的第一行有问题，实际getSegmentInfo函数里面已经创建了这个layer
 
     candidates = {}
     #Go through these, compute distances, probabilities and store them as candidates
@@ -408,8 +414,13 @@ def getNDProbability(dist,decayconstant = 30):
     return p
 
 def getNetworkTransP(s1, s2, graph, endpoints, segmentlengths, pathnodes, decayconstantNet):
+    #一大堆参数，s1是上一个点的某个候选路段；s2是这个点的某个候选路段；graph是道路的最大连通分量（networkx对象）；endpoints是路段路径点字典，具体看前面的获取结果；segmentlengths是每个路段的长度字典，具体看前面的获取结果；pathnodes是前面定义的一个列表，应该是存储已经经过的点，防止环路出现的；decayconstantNet是一个什么距离，暂时也还没看明白
+
+
+
     """
     Returns transition probability of going from segment s1 to s2, based on network distance of segments, as well as corresponding path
+    返回转移概率，应该就是状态序列（状态序列是隐含的，也就是实际上gps点代表的路径经过的路段序列）之间的转移概率，也就是一个正确的路径，前后路段之间的转移概率
     """
     subpath = []
     s1_point = None
