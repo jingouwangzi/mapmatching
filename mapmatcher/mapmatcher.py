@@ -440,9 +440,9 @@ def getNetworkTransP(s1, s2, graph, endpoints, segmentlengths, pathnodes, decayc
         minpair = [0,0,100000]
         for i in range(0,2):
             for j in range(0,2):
-                d = round(pointdistance(s1_edge[i],s2_edge[j]),2)
+                d = round(pointdistance(s1_edge[i],s2_edge[j]),2)  #这个就是两个路段每个端点之间的距离
                 if d<minpair[2]:
-                    minpair = [i,j,d]
+                    minpair = [i,j,d]  #得到的就是s1和s2两个路段距离最近的端点编号，和距离，端点编号为0或者1，0 是起点，1是终点
         s1_point = s1_edge[minpair[0]]
         s2_point = s2_edge[minpair[1]]
 
@@ -451,7 +451,7 @@ def getNetworkTransP(s1, s2, graph, endpoints, segmentlengths, pathnodes, decayc
 ##        else:
         if s1_point == s2_point:
                 #If segments are touching, use a small network distance
-                    dist = 5
+                    dist = 5    #这个dist是干嘛的？
         else:
                 try:
                     #Compute a shortest path (using segment length) on graph where segment endpoints are nodes and segments are (undirected) edges
