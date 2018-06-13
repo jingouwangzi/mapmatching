@@ -60,16 +60,18 @@ def mapMatch(track, segments, decayconstantNet = 30, decayConstantEu = 10, maxDi
         @param segments = a shape file of network segments, should be projected (in meter) to compute Euclidean distances properly (e.g. GCS Amersfoord)
         @param decayconstantNet (optional) = the network distance (in meter) after which the match probability falls under 0.34 (exponential decay). (note this is the inverse of lambda).
         This depends on the point frequency of the track (how far are track points separated?)
-        网络衰减距离，应该是大于这个距离的匹配可能性低于0.34（指数衰减）
+        网络衰减距离，应该是大于这个距离的匹配可能性低于0.34（指数衰减）,根据代码可知，这个是状态转移概率，是指前后两个点的候选路段（也就是前后两个状态）之间的转移概率，两个路段距离越远转移概率越小
+        这个距离的计算是最近端点之间的距离，如果两个路段首尾相连，那么转移概率是1
         取决于轨迹点的频率（轨迹点分布距离有多远）
 
         @param decayConstantEu (optional) = the Euclidean distance (in meter) after which the match probability falls under 0.34 (exponential decay). (note this is the inverse of lambda).
         This depends on the positional error of the track points (how far can points deviate from their true position?)
-        欧氏衰减距离，应该是大于这个距离的匹配可能性低于0.34（指数衰减），根据后面的代码,这里是指一个路段距离某个点的距离大于这个距离，那么点在这个路段上的概率就小于0.34，防染根据我的计算实际上大于这个距离，概率小于0.3679，概率计算：1/exp(dist/decayconstant)，dist就是点距离路段距离
+        欧氏衰减距离，应该是大于这个距离的匹配可能性低于0.34（指数衰减），根据后面的代码,这个是发射概率（输出概率）
+        这里是指一个路段距离某个点的距离大于这个距离，那么点在这个路段上的概率就小于0.34，根据我的计算实际上大于这个距离，概率小于0.3679，概率计算：1/exp(dist/decayconstant)，dist就是点距离路段距离
         取决于轨迹点的位置错误（一个点与它的真实位置距离多远）
 
         @param maxDist (optional) = the Euclidean distance threshold (in meter) for taking into account segments candidates.
-        最大距离，估计是可以匹配到路段上的欧氏距离的阈值，大于这个距离就认为跟路段不匹配
+        最大距离，是可以匹配到路段上的欧氏距离的阈值，大于这个距离就认为跟路段不匹配，小于这个距离就选取作为路段候选
 
         @param addfullpath (optional, True or False) = whether a contiguous full segment path should be outputted. If not, a 1-to-1 list of segments matching each track point is outputted.
         是否输出完整的距离，如果选否，那么就只输出每个轨迹点对应的路段
@@ -119,7 +121,7 @@ def mapMatch(track, segments, decayconstantNet = 30, decayConstantEu = 10, maxDi
         #Get segment candidates and their a-priori probabilities (based on Euclidean distance for current point t)
         sc = getSegmentCandidates(points[t], segments, decayConstantEu, maxDist)
         for s in sc:
-            #s是一个point对应的某个观测状态，
+            #s是一个point对应的某个观测状态，也就是某个路段（用objectid表示）及其对应的概率
             max_tr_prob = 0
             prev_ss = None
             path = []
@@ -414,7 +416,8 @@ def getNDProbability(dist,decayconstant = 30):
     return p
 
 def getNetworkTransP(s1, s2, graph, endpoints, segmentlengths, pathnodes, decayconstantNet):
-    #一大堆参数，s1是上一个点的某个候选路段；s2是这个点的某个候选路段；graph是道路的最大连通分量（networkx对象）；endpoints是路段路径点字典，具体看前面的获取结果；segmentlengths是每个路段的长度字典，具体看前面的获取结果；pathnodes是前面定义的一个列表，应该是存储已经经过的点，防止环路出现的；decayconstantNet是一个什么距离，暂时也还没看明白
+    #一大堆参数，s1是上一个点的某个候选路段；s2是这个点的某个候选路段；graph是道路的最大连通分量（networkx对象）；endpoints是路段路径点字典，具体看前面的获取结果；segmentlengths是每个路段的长度字典，具体看前面的获取结果；pathnodes是前面定义的一个列表，应该是存储已经经过的点，防止环路出现的，但是看这个函数的代码好像没用到；decayconstantNet计算状态转移概率用的一个阈值距离
+    #最后返回三个值，一个是路段之间的状态转移概率，一个是状态转移所经过的路段（如果首尾相连，那么转移概率为1，经过路段为空），还有一个是第二个点候选路段距离第一个点候选路段最近的端点
 
 
 
