@@ -66,7 +66,7 @@ def mapMatch(track, segments, decayconstantNet = 30, decayConstantEu = 10, maxDi
 
         @param decayConstantEu (optional) = the Euclidean distance (in meter) after which the match probability falls under 0.34 (exponential decay). (note this is the inverse of lambda).
         This depends on the positional error of the track points (how far can points deviate from their true position?)
-        欧氏衰减距离，应该是大于这个距离的匹配可能性低于0.34（指数衰减），根据后面的代码,这个是发射概率（输出概率）
+        欧氏衰减距离，应该是大于这个距离的匹配可能性低于0.34（指数衰减），根据后面的代码,这个是发射概率（输出概率）,就是指轨迹点在这个候选路段上的情况下，这个路段被选中的概率
         这里是指一个路段距离某个点的距离大于这个距离，那么点在这个路段上的概率就小于0.34，根据我的计算实际上大于这个距离，概率小于0.3679，概率计算：1/exp(dist/decayconstant)，dist就是点距离路段距离
         取决于轨迹点的位置错误（一个点与它的真实位置距离多远）
 
@@ -487,18 +487,20 @@ def pointdistance(p1, p2):
 def getTrackPoints(track, segments):
     """
     Turns track shapefile into a list of point geometries, reprojecting to the planar RS of the network file
+    把轨迹点转换为一个点几何要素的列表，并且投影到路网坐标系（实际投影这一步被原作者注释掉了，所以segments参数也没用上）
     """
     trackpoints = []
     if arcpy.Exists(track):
         for row in arcpy.da.SearchCursor(track, ["SHAPE@"]):
             #SearchCursor 用于建立从要素类或表中返回的记录的只读访问权限。返回一组迭代的元组。元组中值的顺序与 field_names 参数指定的字段顺序相符。
             #Geometry 属性可通过在字段列表中指定令牌 SHAPE@ 进行访问。
+            #row就是一个个的点要素
             #make sure track points are reprojected to network reference system (should be planar)
             geom = row[0]
-            #geom = row[0].projectAs(arcpy.Describe(segments).spatialReference)
+            #geom = row[0].projectAs(arcpy.Describe(segments).spatialReference) #投影到路网坐标系，被原作者注释掉
             trackpoints.append(row[0])
         print 'track size:' + str(len(trackpoints))
-        return trackpoints  #返回一个由点要素对象组成的数组
+        return trackpoints  #返回一个由点要素对象组成的列表
     else:
         print "Track file does not exist!"
 
@@ -511,23 +513,39 @@ def getNetworkGraph(segments,segmentlengths):
     path =str(os.path.join(arcpy.env.workspace,segments))
     print path
     if arcpy.Exists(path):
-        g = nx.read_shp(path)
+        #这里下面g的路段比原shp少些，只有573个个路段，sg更少，只有520个
+        g = nx.read_shp(path)   #g就是一个图，就是提供的shp形成的一个图，g是digraph对象，是有向图
         #networkx的用法，学习理解一下
         #This selects the largest connected component of the graph
         sg = list(nx.connected_component_subgraphs(g.to_undirected()))[0]
+        #.to_undirected是转换成无向图
+        #获取连通分量(nx.connected_component_subgraphs(G)，返回的是列表，但是元素是图，这些分量按照节点数目从大到小排列，所以第一个就是最大的连通分量)。
+        #获取的是一个由图组成的数组，所以sg就是第0个元素，也就是最大连通分量的元素
+        ##sg是graph对象，是无向图
+        #原图不是一个连通图，有些游离于大部队之外，这里只提取其中的最大联通部分，也就是最大连通分量元素
         print "graph size (excluding unconnected parts): "+str(len(g))
         # Get the length for each road segment and append it as an attribute to the edges in the graph.
         #获取每段路的长度，添加到networkx图中边的属性
         for n0, n1 in sg.edges():
             oid = sg[n0][n1]["OBJECTID"]
-            sg[n0][n1]['length'] = segmentlengths[oid]
+            sg[n0][n1]['length'] = segmentlengths[oid]#把路段长度赋值给图sg的边的length属性
         return sg
+        '''
+        print len(g)
+        print len(sg)  
+        print g.number_of_nodes()
+        print g.number_of_edges()
+        print sg.number_of_nodes()
+        print sg.number_of_edges()
+        '''
     else:
         print "network file not found on path: "+path
 
 def getSegmentInfo(segments):
     """
     Builds a dictionary for looking up endpoints of network segments (needed only because networkx graph identifies edges by nodes)
+    创建一个查询网络路段的字典，实际是两个字典，第一个字典key是路段objectid，值是一个由点坐标值组成的元祖，也就是路段经过的所有点；第二个字典，key也是objectid，值就是这个路段的长度。
+    这么做仅仅是因为networkx中的图使用点来表示路段
     """
     if arcpy.Exists(segments):
         cursor = arcpy.da.SearchCursor(segments, ["OBJECTID", "SHAPE@"])
@@ -540,8 +558,8 @@ def getSegmentInfo(segments):
         del cursor
         print "Number of segments: "+ str(len(endpoints))
         #prepare segment layer for fast search
-        arcpy.Delete_management('segments_lyr')
-        arcpy.MakeFeatureLayer_management(segments, 'segments_lyr')
+        arcpy.Delete_management('segments_lyr')  #首先删除图层，如果没有就算了
+        arcpy.MakeFeatureLayer_management(segments, 'segments_lyr')  #此处创建一个arcgis的图层
         return (endpoints,segmentlengths)   
         #返回两个字典，第一个字典key是路段objectid，值是一个由点坐标值组成的元祖，也就是路段经过的所有点
         #第二个字典，key也是objectid，值就是这个路段的长度
@@ -549,7 +567,7 @@ def getSegmentInfo(segments):
         print "segment file does not exist!"
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  #如果是主动运行这个程序，就要定义以下三个参数，如果是调用这个程序，那么会传过来相关参数
 
 ##    #Test using the shipped data example
     arcpy.env.workspace = 'C:\\Users\\schei008\\Documents\\Github\\mapmatching'
